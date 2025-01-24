@@ -1,0 +1,14 @@
+[package]
+name = "aes128_rdx_bc_fhe"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tfhe = { version = "*", features = ["integer", "x86_64-unix"] }
+#tfhe = { version = "*", features = ["integer", "aarch64-unix"] }
+aes = "0.8.4"
+rand = "0.8.5"
+num_cpus = "1.16.0"
+clap = { version = "4.5.23", features = ["derive"] }
+rayon = "1.10.0"
+crossbeam = "0.8.4"
