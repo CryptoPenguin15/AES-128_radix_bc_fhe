@@ -4,52 +4,38 @@ use tfhe::integer::ciphertext::BaseRadixCiphertext;
 use tfhe::integer::prelude::ServerKeyDefaultCMux;
 use tfhe::integer::{BooleanBlock, RadixClientKey, ServerKey};
 
-use std::sync::Mutex;
-
 const PS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
-/*
-static P_B: OnceCell<[BaseRadixCiphertext<Ciphertext>; 8]> = OnceCell::new();
-static V_0: OnceCell<BaseRadixCiphertext<Ciphertext>> = OnceCell::new();
 
-pub fn init_pos_vals(ck: &RadixClientKey) {
-    P_B.get_or_init(|| core::array::from_fn(|i| ck.encrypt(PS[i])));
-    V_0.get_or_init(|| ck.encrypt(0u8));
+pub struct PosVals {
+    p_b: [BaseRadixCiphertext<Ciphertext>; 8],
+    v_0: BaseRadixCiphertext<Ciphertext>,
+}
+
+impl PosVals {
+    pub fn new(ck: &RadixClientKey) -> Self {
+        let p_b = core::array::from_fn(|i| ck.encrypt(PS[i]));
+        let v_0 = ck.encrypt(0u8);
+        PosVals { p_b, v_0 }
+    }
+
+    #[inline]
+    pub fn get_p_b(&self) -> &[BaseRadixCiphertext<Ciphertext>; 8] {
+        &self.p_b
+    }
+
+    #[inline]
+    pub fn get_v_0(&self) -> &BaseRadixCiphertext<Ciphertext> {
+        &self.v_0
+    }
 }
 
 #[inline]
-fn get_p_b() -> &'static [BaseRadixCiphertext<Ciphertext>; 8] {
-    P_B.get().expect("P_B is not initialized.")
-}
-
-#[inline]
-fn get_v_0() -> &'static BaseRadixCiphertext<Ciphertext> {
-    V_0.get().expect("V_0 is not initialized.")
-}
-*/
-static P_B: Mutex<Option<[BaseRadixCiphertext<Ciphertext>; 8]>> = Mutex::new(None);
-static V_0: Mutex<Option<BaseRadixCiphertext<Ciphertext>>> = Mutex::new(None);
-
-pub fn init_pos_vals(ck: &RadixClientKey) {
-    let mut p_b = P_B.lock().unwrap();
-    *p_b = Some(core::array::from_fn(|i| ck.encrypt(PS[i])));
-
-    let mut v_0 = V_0.lock().unwrap();
-    *v_0 = Some(ck.encrypt(0u8));
-}
-
-#[inline]
-fn get_p_b() -> [BaseRadixCiphertext<Ciphertext>; 8] {
-    P_B.lock().unwrap().clone().expect("P_B is not initialized.")
-}
-
-#[inline]
-fn get_v_0() -> BaseRadixCiphertext<Ciphertext> {
-    V_0.lock().unwrap().clone().expect("V_0 is not initialized.")
-}
-
-#[inline]
-fn get_bool_from_u8(idx: &BaseRadixCiphertext<Ciphertext>, sk: &ServerKey) -> [BooleanBlock; 8] {
-    let p_b = get_p_b();
+fn get_bool_from_u8(
+    idx: &BaseRadixCiphertext<Ciphertext>,
+    pos_vals: &PosVals,
+    sk: &ServerKey,
+) -> [BooleanBlock; 8] {
+    let p_b = pos_vals.get_p_b();
 
     // radix to boolean blocks
     let x_p: [BooleanBlock; 8] = core::array::from_fn(|i| {
@@ -61,12 +47,16 @@ fn get_bool_from_u8(idx: &BaseRadixCiphertext<Ciphertext>, sk: &ServerKey) -> [B
 }
 
 #[inline]
-fn get_u8_from_bool(res_p: [BooleanBlock; 8], sk: &ServerKey) -> BaseRadixCiphertext<Ciphertext> {
-    let p_b = get_p_b();
-    let v_0 = get_v_0();
+fn get_u8_from_bool(
+    res_p: [BooleanBlock; 8],
+    pos_vals: &PosVals,
+    sk: &ServerKey,
+) -> BaseRadixCiphertext<Ciphertext> {
+    let p_b = pos_vals.get_p_b();
+    let v_0 = pos_vals.get_v_0();
 
     let r_b: [BaseRadixCiphertext<Ciphertext>; 8] =
-        core::array::from_fn(|i| sk.if_then_else_parallelized(&res_p[i], &p_b[i], &v_0));
+        core::array::from_fn(|i| sk.if_then_else_parallelized(&res_p[i], &p_b[i], v_0));
 
     let val: BaseRadixCiphertext<Ciphertext> = sk.bitor_parallelized(
         &sk.bitor_parallelized(
@@ -85,23 +75,25 @@ fn get_u8_from_bool(res_p: [BooleanBlock; 8], sk: &ServerKey) -> BaseRadixCipher
 #[inline]
 pub fn sbox_idx(
     idx: &BaseRadixCiphertext<Ciphertext>,
+    pos_vals: &PosVals,
     sk: &ServerKey,
 ) -> BaseRadixCiphertext<Ciphertext> {
-    let x_p = get_bool_from_u8(idx, sk);
+    let x_p = get_bool_from_u8(idx, pos_vals, sk);
     let res_p = sbox_bc(&x_p, sk);
 
-    get_u8_from_bool(res_p, sk)
+    get_u8_from_bool(res_p, pos_vals, sk)
 }
 
 #[inline]
 pub fn sbox_inv_idx(
     idx: &BaseRadixCiphertext<Ciphertext>,
+    pos_vals: &PosVals,
     sk: &ServerKey,
 ) -> BaseRadixCiphertext<Ciphertext> {
-    let x_p = get_bool_from_u8(idx, sk);
+    let x_p = get_bool_from_u8(idx, pos_vals, sk);
     let res_p = sbox_inv_bc(&x_p, sk);
 
-    get_u8_from_bool(res_p, sk)
+    get_u8_from_bool(res_p, pos_vals, sk)
 }
 
 fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {

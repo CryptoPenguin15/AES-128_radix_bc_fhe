@@ -1,7 +1,8 @@
 # Design
 
 - **Readable:** Close to the FIPS-197 documentation.
-- **Encrypt/decrypt:** Both operations supported.
+- **Encrypt/decrypt:** Both operations supported. Each block outsourced to the server/cloud.
+- **Thread-safe:** Only static global variables
 - **Efficient Implementation:**
   - Minimize bootstraps, as they dominate runtime.
   - Use BooleanBlock for the `S-Box`, with boolean circuit evaluation. 

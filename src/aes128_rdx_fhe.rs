@@ -1,6 +1,6 @@
 use crate::aes_fhe::{NUM_BLOCK, dec_rdx_vec, enc_rdx_vec, gen_rdx_keys, print_hex_rdx_fhe};
 
-use crate::aes128_bool_circ::{init_pos_vals, sbox_idx, sbox_inv_idx};
+use crate::aes128_bool_circ::{PosVals, sbox_idx, sbox_inv_idx};
 use crate::aes128_keyschedule::{BLOCKSIZE, KEYSIZE, ROUNDKEYSIZE, ROUNDS};
 use crate::aes128_tables::{GMUL2, GMUL3, GMUL9, GMULB, GMULD, GMULE, gen_tbl};
 
@@ -32,25 +32,33 @@ fn add_round_key_fhe(
 }
 
 #[inline]
-pub fn sub_bytes_fhe(state: &mut [BaseRadixCiphertext<Ciphertext>], sk: &ServerKey) {
+pub fn sub_bytes_fhe(
+    state: &mut [BaseRadixCiphertext<Ciphertext>],
+    pos_vals: &PosVals,
+    sk: &ServerKey,
+) {
     let start = Instant::now();
     let tmp = state.to_vec();
 
     state.par_iter_mut().enumerate().for_each(|(i, elem)| {
-        *elem = sbox_idx(&tmp[i], sk);
+        *elem = sbox_idx(&tmp[i], pos_vals, sk);
     });
 
     println!("sub_bytes_fhe           {:.2?}", start.elapsed());
 }
 
 #[inline]
-pub fn inv_sub_bytes_fhe(state: &mut [BaseRadixCiphertext<Ciphertext>], sk: &ServerKey) {
+pub fn inv_sub_bytes_fhe(
+    state: &mut [BaseRadixCiphertext<Ciphertext>],
+    pos_vals: &PosVals,
+    sk: &ServerKey,
+) {
     let start = Instant::now();
     assert!(state.len() % 2 == 0);
     let tmp = state.to_vec();
 
     state.par_iter_mut().enumerate().for_each(|(i, elem)| {
-        *elem = sbox_inv_idx(&tmp[i], sk);
+        *elem = sbox_inv_idx(&tmp[i], pos_vals, sk);
     });
 
     println!("inv_sub_bytes_fhe   {:.2?}", start.elapsed());
@@ -262,8 +270,8 @@ pub fn encrypt_block_fhe(
 
     println!("generate_keys");
     let (ck, sk) = gen_rdx_keys();
-    init_pos_vals(&ck);
-    
+    let pos_vals = PosVals::new(&ck);
+
     let mut state_ck = enc_rdx_vec(&state, &ck);
     let xk_ck = enc_rdx_vec(xk, &ck);
 
@@ -282,7 +290,7 @@ pub fn encrypt_block_fhe(
         print_hex_rdx_fhe("k_sch", 0, &state_ck, &ck);
 
         for round in 1..ROUNDS {
-            sub_bytes_fhe(&mut state_ck, &sk);
+            sub_bytes_fhe(&mut state_ck, &pos_vals, &sk);
             print_hex_rdx_fhe("s_box", round, &state_ck, &ck);
 
             shift_rows_fhe(&mut state_ck);
@@ -295,7 +303,7 @@ pub fn encrypt_block_fhe(
             print_hex_rdx_fhe("k_sch", round, &state_ck, &ck);
         }
 
-        sub_bytes_fhe(&mut state_ck, &sk);
+        sub_bytes_fhe(&mut state_ck, &pos_vals, &sk);
         print_hex_rdx_fhe("s_box", 10, &state_ck, &ck);
 
         shift_rows_fhe(&mut state_ck);
@@ -326,7 +334,7 @@ pub fn decrypt_block_fhe(
 
     println!("generate_keys");
     let (ck, sk) = gen_rdx_keys();
-    init_pos_vals(&ck);
+    let pos_vals = PosVals::new(&ck);
 
     let mut state_ck = enc_rdx_vec(&state, &ck);
     let xk_ck = enc_rdx_vec(xk, &ck);
@@ -351,7 +359,7 @@ pub fn decrypt_block_fhe(
             inv_shift_rows_fhe(&mut state_ck);
             print_hex_rdx_fhe("is_row", round, &state_ck, &ck);
 
-            inv_sub_bytes_fhe(&mut state_ck, &sk);
+            inv_sub_bytes_fhe(&mut state_ck, &pos_vals, &sk);
             print_hex_rdx_fhe("is_box", round, &state_ck, &ck);
 
             add_round_key_fhe(
@@ -375,7 +383,7 @@ pub fn decrypt_block_fhe(
         inv_shift_rows_fhe(&mut state_ck);
         print_hex_rdx_fhe("is_row", 0, &state_ck, &ck);
 
-        inv_sub_bytes_fhe(&mut state_ck, &sk);
+        inv_sub_bytes_fhe(&mut state_ck, &pos_vals, &sk);
         print_hex_rdx_fhe("is_box", 0, &state_ck, &ck);
 
         add_round_key_fhe(&mut state_ck, &xk_ck[..2 * BLOCKSIZE], &sk);

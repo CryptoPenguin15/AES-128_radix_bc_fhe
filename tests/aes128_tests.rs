@@ -1,5 +1,5 @@
 pub use aes128_rdx_bc_fhe::aes_fhe::{enc_rdx_vec, gen_rdx_keys, print_hex_rdx_fhe};
-pub use aes128_rdx_bc_fhe::aes128_bool_circ::{init_pos_vals, sbox_idx, sbox_inv_idx};
+pub use aes128_rdx_bc_fhe::aes128_bool_circ::{PosVals, sbox_idx, sbox_inv_idx};
 pub use aes128_rdx_bc_fhe::aes128_keyschedule::key_expansion;
 pub use aes128_rdx_bc_fhe::aes128_rdx_fhe::{decrypt_block_fhe, encrypt_block_fhe, sub_bytes_fhe};
 pub use aes128_rdx_bc_fhe::aes128_tables::{GMUL2, GMUL3, SBOX, gen_tbl};
@@ -283,14 +283,14 @@ mod tests {
     }
 
     #[test]
-    fn test_sbox_idx() {
+    fn test_sbox() {
         let (ck, sk) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, NUM_BLOCK);
-        init_pos_vals(&ck);
+        let pos_vals = PosVals::new(&ck);
 
         for i in 0..255 {
             let idx = ck.encrypt(i as u8);
 
-            let sbox = sbox_idx(&idx, &sk);
+            let sbox = sbox_idx(&idx, &pos_vals, &sk);
             let sbox_val = ck.decrypt::<u8>(&sbox);
 
             println!("i {:},  result {:x}", i, sbox_val);
@@ -301,12 +301,12 @@ mod tests {
     #[test]
     fn test_sbox_inv() {
         let (ck, sk) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, NUM_BLOCK);
-        init_pos_vals(&ck);
+        let pos_vals = PosVals::new(&ck);
 
         for i in 0..255 {
             let idx = ck.encrypt(i as u8);
 
-            let sbox = sbox_inv_idx(&idx, &sk);
+            let sbox = sbox_inv_idx(&idx, &pos_vals, &sk);
             let sbox_val = ck.decrypt::<u8>(&sbox);
 
             println!("i {:},  result {:x}", i, sbox_val);
