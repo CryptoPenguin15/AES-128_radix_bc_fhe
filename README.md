@@ -30,26 +30,26 @@
 | **2**   | 2  | 6  | 10 | 14 |
 | **3**   | 3  | 7  | 11 | 15 |
 
-## PBS
-### PBS per operation
+## Work performed
+### Operations
 
-| Operation    | PBS Count | PBS / thread | Details              |
+| Operation    | OPs Count | OPs / thread | Details              |
 |--------------|-----------|--------------|----------------------|
 | **add_key**  | 16        | 1            | bitwise XOR          |
-| **sub_**     | 16        | 1            | bitwise XOR          |
+| **sub_**     | 16        | 1            | boolean circuit      |
 | **rot_rows** | 0         | 0            |                      |
-| **mix_cols** | 80        | 5            | Two LUTs, three XORs |
+| **mix_cols** | 80        | 5            | Two MVs, three XORs  |
 
-### PBS encrypt
+### Encrypt
 Time taken can be estimated from
 
-| Operation    | Tot. operations | PBS / thread | 
+| Operation    | Tot. operations | OPs / thread | 
 |--------------|-----------------|--------------|
 | **add_key**  | 11              | 11           |
 | **sub_**     | 10              | 10           |
 | **rot_rows** | 10              | 0            |
-| **mix_cols** | 9 * 5           | 45           |
-| **Total**    | **76**          | **66**       |      
+| **mix_cols** | 9 * 5           | 225          |
+| **Total**    | **76**          | **246**       |      
 
 
 ## Example Invocation
