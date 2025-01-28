@@ -1,5 +1,5 @@
 pub use aes128_rdx_bc_fhe::aes_fhe::{enc_rdx_vec, gen_rdx_keys, print_hex_rdx_fhe};
-pub use aes128_rdx_bc_fhe::aes128_bool_circ::{PosVals, sbox_idx, sbox_inv_idx};
+pub use aes128_rdx_bc_fhe::aes128_bool_circ::{PosVals, mix_cols, sbox_idx, sbox_inv_idx};
 pub use aes128_rdx_bc_fhe::aes128_keyschedule::key_expansion;
 pub use aes128_rdx_bc_fhe::aes128_rdx_fhe::{decrypt_block_fhe, encrypt_block_fhe, sub_bytes_fhe};
 pub use aes128_rdx_bc_fhe::aes128_tables::{GMUL2, GMUL3, SBOX, gen_tbl};
@@ -311,6 +311,126 @@ mod tests {
 
             println!("i {:},  result {:x}", i, sbox_val);
             assert!(sbox_val == SBOX_INV[i]);
+        }
+    }
+
+    #[test]
+    fn test_mix_cols_1() {
+        let (ck, sk) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, NUM_BLOCK);
+        let pos_vals = PosVals::new(&ck);
+
+        let c1_pre = [0x01, 0x01, 0x01, 0x01];
+        let c1_pst = [0x01, 0x01, 0x01, 0x01];
+
+        let col = [
+            ck.encrypt(c1_pre[0] as u8),
+            ck.encrypt(c1_pre[1] as u8),
+            ck.encrypt(c1_pre[2] as u8),
+            ck.encrypt(c1_pre[3] as u8),
+        ];
+
+        let out = mix_cols(&col, &pos_vals, &sk);
+
+        let dec = [
+            ck.decrypt::<u8>(&out[0]),
+            ck.decrypt::<u8>(&out[1]),
+            ck.decrypt::<u8>(&out[2]),
+            ck.decrypt::<u8>(&out[3]),
+        ];
+
+        for (i, (&pre, &post)) in c1_pre.iter().zip(dec.iter()).enumerate() {
+            println!("r{}_in {:x}, r{}_out {:x}", i + 1, pre, i + 1, post);
+            assert_eq!(post, c1_pst[i]);
+        }
+    }
+
+    #[test]
+    fn test_mix_cols_2() {
+        let (ck, sk) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, NUM_BLOCK);
+        let pos_vals = PosVals::new(&ck);
+
+        let c1_pre = [0xc6, 0xc6, 0xc6, 0xc6];
+        let c1_pst = [0xc6, 0xc6, 0xc6, 0xc6];
+
+        let col = [
+            ck.encrypt(c1_pre[0] as u8),
+            ck.encrypt(c1_pre[1] as u8),
+            ck.encrypt(c1_pre[2] as u8),
+            ck.encrypt(c1_pre[3] as u8),
+        ];
+
+        let out = mix_cols(&col, &pos_vals, &sk);
+
+        let dec = [
+            ck.decrypt::<u8>(&out[0]),
+            ck.decrypt::<u8>(&out[1]),
+            ck.decrypt::<u8>(&out[2]),
+            ck.decrypt::<u8>(&out[3]),
+        ];
+
+        for (i, (&pre, &post)) in c1_pre.iter().zip(dec.iter()).enumerate() {
+            println!("r{}_in {:x}, r{}_out {:x}", i + 1, pre, i + 1, post);
+            assert_eq!(post, c1_pst[i]);
+        }
+    }
+
+    #[test]
+    fn test_mix_cols_3() {
+        let (ck, sk) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, NUM_BLOCK);
+        let pos_vals = PosVals::new(&ck);
+
+        let c1_pre = [0xd4, 0xbf, 0x5d, 0x30];
+        let c1_pst = [0x04, 0x66, 0x81, 0xe5];
+
+        let col = [
+            ck.encrypt(c1_pre[0] as u8),
+            ck.encrypt(c1_pre[1] as u8),
+            ck.encrypt(c1_pre[2] as u8),
+            ck.encrypt(c1_pre[3] as u8),
+        ];
+
+        let out = mix_cols(&col, &pos_vals, &sk);
+
+        let dec = [
+            ck.decrypt::<u8>(&out[0]),
+            ck.decrypt::<u8>(&out[1]),
+            ck.decrypt::<u8>(&out[2]),
+            ck.decrypt::<u8>(&out[3]),
+        ];
+
+        for (i, (&pre, &post)) in c1_pre.iter().zip(dec.iter()).enumerate() {
+            println!("r{}_in {:x}, r{}_out {:x}", i + 1, pre, i + 1, post);
+            assert_eq!(post, c1_pst[i]);
+        }
+    }
+
+    #[test]
+    fn test_mix_cols_4() {
+        let (ck, sk) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, NUM_BLOCK);
+        let pos_vals = PosVals::new(&ck);
+
+        let c1_pre = [0xe0, 0xb4, 0x52, 0xae];
+        let c1_pst = [0xe0, 0xcb, 0x19, 0x9a];
+
+        let col = [
+            ck.encrypt(c1_pre[0] as u8),
+            ck.encrypt(c1_pre[1] as u8),
+            ck.encrypt(c1_pre[2] as u8),
+            ck.encrypt(c1_pre[3] as u8),
+        ];
+
+        let out = mix_cols(&col, &pos_vals, &sk);
+
+        let dec = [
+            ck.decrypt::<u8>(&out[0]),
+            ck.decrypt::<u8>(&out[1]),
+            ck.decrypt::<u8>(&out[2]),
+            ck.decrypt::<u8>(&out[3]),
+        ];
+
+        for (i, (&pre, &post)) in c1_pre.iter().zip(dec.iter()).enumerate() {
+            println!("r{}_in {:x}, r{}_out {:x}", i + 1, pre, i + 1, post);
+            assert_eq!(post, c1_pst[i]);
         }
     }
 }

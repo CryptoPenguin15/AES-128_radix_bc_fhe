@@ -29,6 +29,24 @@ impl PosVals {
     }
 }
 
+pub struct ColBoolBlocks {
+    r1: [BooleanBlock; 8],
+    r2: [BooleanBlock; 8],
+    r3: [BooleanBlock; 8],
+    r4: [BooleanBlock; 8],
+}
+
+impl ColBoolBlocks {
+    pub fn new(values: [[BooleanBlock; 8]; 4]) -> Self {
+        Self {
+            r1: values[0].clone(),
+            r2: values[1].clone(),
+            r3: values[2].clone(),
+            r4: values[3].clone(),
+        }
+    }
+}
+
 #[inline]
 fn get_bool_from_u8(
     idx: &BaseRadixCiphertext<Ciphertext>,
@@ -82,6 +100,28 @@ pub fn sbox_idx(
     let res_p = sbox_bc(&x_p, sk);
 
     get_u8_from_bool(res_p, pos_vals, sk)
+}
+
+#[inline]
+pub fn mix_cols(
+    col: &[BaseRadixCiphertext<Ciphertext>; 4],
+    pos_vals: &PosVals,
+    sk: &ServerKey,
+) -> [BaseRadixCiphertext<Ciphertext>; 4] {
+    let r1_p = get_bool_from_u8(&col[0], pos_vals, sk);
+    let r2_p = get_bool_from_u8(&col[1], pos_vals, sk);
+    let r3_p = get_bool_from_u8(&col[2], pos_vals, sk);
+    let r4_p = get_bool_from_u8(&col[3], pos_vals, sk);
+
+    let inp = ColBoolBlocks::new([r1_p, r2_p, r3_p, r4_p]);
+    let res_p = mix_cols_bc(&inp, sk);
+
+    let out1 = get_u8_from_bool(res_p.r1, pos_vals, sk);
+    let out2 = get_u8_from_bool(res_p.r2, pos_vals, sk);
+    let out3 = get_u8_from_bool(res_p.r3, pos_vals, sk);
+    let out4 = get_u8_from_bool(res_p.r4, pos_vals, sk);
+
+    [out1, out2, out3, out4]
 }
 
 #[inline]
@@ -370,4 +410,178 @@ fn sbox_inv_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
     let out: [BooleanBlock; 8] = [s7, s6, s5, s4, s3, s2, s1, s0];
 
     out.clone()
+}
+
+fn mix_cols_bc(col: &ColBoolBlocks, sk: &ServerKey) -> ColBoolBlocks {
+    let x0 = &col.r1[0];
+    let x1 = &col.r1[1];
+    let x2 = &col.r1[2];
+    let x3 = &col.r1[3];
+    let x4 = &col.r1[4];
+    let x5 = &col.r1[5];
+    let x6 = &col.r1[6];
+    let x7 = &col.r1[7];
+
+    let x8 = &col.r2[0];
+    let x9 = &col.r2[1];
+    let x10 = &col.r2[2];
+    let x11 = &col.r2[3];
+    let x12 = &col.r2[4];
+    let x13 = &col.r2[5];
+    let x14 = &col.r2[6];
+    let x15 = &col.r2[7];
+
+    let x16 = &col.r3[0];
+    let x17 = &col.r3[1];
+    let x18 = &col.r3[2];
+    let x19 = &col.r3[3];
+    let x20 = &col.r3[4];
+    let x21 = &col.r3[5];
+    let x22 = &col.r3[6];
+    let x23 = &col.r3[7];
+
+    let x24 = &col.r4[0];
+    let x25 = &col.r4[1];
+    let x26 = &col.r4[2];
+    let x27 = &col.r4[3];
+    let x28 = &col.r4[4];
+    let x29 = &col.r4[5];
+    let x30 = &col.r4[6];
+    let x31 = &col.r4[7];
+
+    let t0 = sk.boolean_bitxor(x0, x8);
+    let t1 = sk.boolean_bitxor(x16, x24);
+    let t2 = sk.boolean_bitxor(x1, x9);
+    let t3 = sk.boolean_bitxor(x17, x25);
+    let t4 = sk.boolean_bitxor(x2, x10);
+    let t5 = sk.boolean_bitxor(x18, x26);
+    let t6 = sk.boolean_bitxor(x3, x11);
+    let t7 = sk.boolean_bitxor(x19, x27);
+    let t8 = sk.boolean_bitxor(x4, x12);
+    let t9 = sk.boolean_bitxor(x20, x28);
+    let t10 = sk.boolean_bitxor(x5, x13);
+    let t11 = sk.boolean_bitxor(x21, x29);
+    let t12 = sk.boolean_bitxor(x6, x14);
+    let t13 = sk.boolean_bitxor(x22, x30);
+    let t14 = sk.boolean_bitxor(x23, x31);
+    let t15 = sk.boolean_bitxor(x7, x15);
+    let t16 = sk.boolean_bitxor(x8, &t1);
+    let y0 = sk.boolean_bitxor(&t15, &t16);
+    let t17 = sk.boolean_bitxor(x7, x23);
+    let t18 = sk.boolean_bitxor(x24, &t0);
+    let y16 = sk.boolean_bitxor(&t14, &t18);
+    let t19 = sk.boolean_bitxor(&t1, &y16);
+    let y24 = sk.boolean_bitxor(&t17, &t19);
+    let t20 = sk.boolean_bitxor(x27, &t14);
+    let t21 = sk.boolean_bitxor(&t0, &y0);
+    let y8 = sk.boolean_bitxor(&t17, &t21);
+    let t22 = sk.boolean_bitxor(&t5, &t20);
+    let y19 = sk.boolean_bitxor(&t6, &t22);
+    let t23 = sk.boolean_bitxor(x11, &t15);
+    let t24 = sk.boolean_bitxor(&t7, &t23);
+    let y3 = sk.boolean_bitxor(&t4, &t24);
+    let t25 = sk.boolean_bitxor(x2, x18);
+    let t26 = sk.boolean_bitxor(&t17, &t25);
+    let t27 = sk.boolean_bitxor(&t9, &t23);
+    let t28 = sk.boolean_bitxor(&t8, &t20);
+    let t29 = sk.boolean_bitxor(x10, &t2);
+    let y2 = sk.boolean_bitxor(&t5, &t29);
+    let t30 = sk.boolean_bitxor(x26, &t3);
+    let y18 = sk.boolean_bitxor(&t4, &t30);
+    let t31 = sk.boolean_bitxor(x9, x25);
+    let t32 = sk.boolean_bitxor(&t25, &t31);
+    let y10 = sk.boolean_bitxor(&t30, &t32);
+    let y26 = sk.boolean_bitxor(&t29, &t32);
+    let t33 = sk.boolean_bitxor(x1, &t18);
+    let t34 = sk.boolean_bitxor(x30, &t11);
+    let y22 = sk.boolean_bitxor(&t12, &t34);
+    let t35 = sk.boolean_bitxor(x14, &t13);
+    let y6 = sk.boolean_bitxor(&t10, &t35);
+    let t36 = sk.boolean_bitxor(x5, x21);
+    let t37 = sk.boolean_bitxor(x30, &t17);
+    let t38 = sk.boolean_bitxor(x17, &t16);
+    let t39 = sk.boolean_bitxor(x13, &t8);
+    let y5 = sk.boolean_bitxor(&t11, &t39);
+    let t40 = sk.boolean_bitxor(x12, &t36);
+    let t41 = sk.boolean_bitxor(x29, &t9);
+    let y21 = sk.boolean_bitxor(&t10, &t41);
+    let t42 = sk.boolean_bitxor(x28, &t40);
+    let y13 = sk.boolean_bitxor(&t41, &t42);
+    let y29 = sk.boolean_bitxor(&t39, &t42);
+    let t43 = sk.boolean_bitxor(x15, &t12);
+    let y7 = sk.boolean_bitxor(&t14, &t43);
+    let t44 = sk.boolean_bitxor(x14, &t37);
+    let y31 = sk.boolean_bitxor(&t43, &t44);
+    let t45 = sk.boolean_bitxor(x31, &t13);
+    let y15 = sk.boolean_bitxor(&t44, &t45);
+    let y23 = sk.boolean_bitxor(&t15, &t45);
+    let t46 = sk.boolean_bitxor(&t12, &t36);
+    let y14 = sk.boolean_bitxor(&y6, &t46);
+    let t47 = sk.boolean_bitxor(&t31, &t33);
+    let y17 = sk.boolean_bitxor(&t19, &t47);
+    let t48 = sk.boolean_bitxor(&t6, &y3);
+    let y11 = sk.boolean_bitxor(&t26, &t48);
+    let t49 = sk.boolean_bitxor(&t2, &t38);
+    let y25 = sk.boolean_bitxor(&y24, &t49);
+    let t50 = sk.boolean_bitxor(&t7, &y19);
+    let y27 = sk.boolean_bitxor(&t26, &t50);
+    let t51 = sk.boolean_bitxor(x22, &t46);
+    let y30 = sk.boolean_bitxor(&t11, &t51);
+    let t52 = sk.boolean_bitxor(x19, &t28);
+    let y20 = sk.boolean_bitxor(x28, &t52);
+    let t53 = sk.boolean_bitxor(x3, &t27);
+    let y4 = sk.boolean_bitxor(x12, &t53);
+    let t54 = sk.boolean_bitxor(&t3, &t33);
+    let y9 = sk.boolean_bitxor(&y8, &t54);
+    let t55 = sk.boolean_bitxor(&t21, &t31);
+    let y1 = sk.boolean_bitxor(&t38, &t55);
+    let t56 = sk.boolean_bitxor(x4, &t17);
+    let t57 = sk.boolean_bitxor(x19, &t56);
+    let y12 = sk.boolean_bitxor(&t27, &t57);
+    let t58 = sk.boolean_bitxor(x3, &t28);
+    let t59 = sk.boolean_bitxor(&t17, &t58);
+    let y28 = sk.boolean_bitxor(x20, &t59);
+
+    let r1 = [
+        y0.clone(),
+        y1.clone(),
+        y2.clone(),
+        y3.clone(),
+        y4.clone(),
+        y5.clone(),
+        y6.clone(),
+        y7.clone(),
+    ];
+    let r2 = [
+        y8.clone(),
+        y9.clone(),
+        y10.clone(),
+        y11.clone(),
+        y12.clone(),
+        y13.clone(),
+        y14.clone(),
+        y15.clone(),
+    ];
+    let r3 = [
+        y16.clone(),
+        y17.clone(),
+        y18.clone(),
+        y19.clone(),
+        y20.clone(),
+        y21.clone(),
+        y22.clone(),
+        y23.clone(),
+    ];
+    let r4 = [
+        y24.clone(),
+        y25.clone(),
+        y26.clone(),
+        y27.clone(),
+        y28.clone(),
+        y29.clone(),
+        y30.clone(),
+        y31.clone(),
+    ];
+
+    ColBoolBlocks::new([r1, r2, r3, r4])
 }

@@ -5,12 +5,9 @@
 - **Thread-safe:** Only static global variables
 - **Efficient Implementation:**
   - Minimize bootstraps, as they dominate runtime.
-  - Use BooleanBlock for the `S-Box`, with boolean circuit evaluation. 
-  - Use MatchValues for the `MixColumns` step.
+  - Use BooleanBlock for the `S-Box` and `MixColumns`, with boolean circuit evaluation. 
+  - Use MatchValues for the inverse `MixColumns` step.
 - **xor:** Performed unchecked() since bitlength is known.
-- **mix_col:**
-   - Operations are decomposed.
-   - Example: The complete g2 state and g3 state are first retrieved, and the g2_g3_xor state afterwards. 
 - **Key Expansion:** 
   - Performed as an offline phase.
   - Additional tables for combined operations can be precomputed.
@@ -92,3 +89,5 @@ cargo test --release -- --nocapture ::test_endianess -- --exact
 - [NIST Special Publication 800-38A](https://nvlpubs.nist.gov/nistpubs/legacy/sp/nistspecialpublication800-38a.pdf)
 - [A new combinational logic minimization technique with applications to cryptology.](https://eprint.iacr.org/2009/191.pdf)
 - [Circuit Minimization Work. Yale]
+- [AES MixColumn with 92 XOR gates](https://eprint.iacr.org/2019/833.pdf)
+

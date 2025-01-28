@@ -1,8 +1,8 @@
 use crate::aes_fhe::{NUM_BLOCK, dec_rdx_vec, enc_rdx_vec, gen_rdx_keys, print_hex_rdx_fhe};
 
-use crate::aes128_bool_circ::{PosVals, sbox_idx, sbox_inv_idx};
+use crate::aes128_bool_circ::{PosVals, mix_cols, sbox_idx, sbox_inv_idx};
 use crate::aes128_keyschedule::{BLOCKSIZE, KEYSIZE, ROUNDKEYSIZE, ROUNDS};
-use crate::aes128_tables::{GMUL2, GMUL3, GMUL9, GMULB, GMULD, GMULE, gen_tbl};
+use crate::aes128_tables::{GMUL9, GMULB, GMULD, GMULE, gen_tbl};
 
 use tfhe::MatchValues;
 use tfhe::integer::ServerKey;
@@ -23,9 +23,7 @@ fn add_round_key_fhe(
     let start = Instant::now();
 
     state.par_iter_mut().enumerate().for_each(|(i, elem)| {
-        let start = Instant::now();
         *elem = sk.unchecked_bitxor(elem, &rkey[i]);
-        println!("unchecked_bitxor         {:.2?}", start.elapsed());
     });
 
     println!("add_round_key_fhe       {:.2?}", start.elapsed());
@@ -180,38 +178,27 @@ fn parallel_xor(
 #[inline]
 fn mix_columns_fhe(
     state: &mut [BaseRadixCiphertext<Ciphertext>],
-    gmul2_tbl: &MatchValues<u8>,
-    gmul3_tbl: &MatchValues<u8>,
+    pos_vals: &PosVals,
     sk: &ServerKey,
 ) {
     let start = Instant::now();
     assert!(state.len() == 16);
 
-    let g2_state = lut_state(state, gmul2_tbl, sk);
-    let g3_state = lut_state(state, gmul3_tbl, sk);
+    state.chunks_exact_mut(4).for_each(|col| {
+        let col_clone = [
+            col[0].clone(),
+            col[1].clone(),
+            col[2].clone(),
+            col[3].clone(),
+        ];
 
-    let mut binding: Vec<BaseRadixCiphertext<Ciphertext>> = (0..16)
-        .map(|_| sk.create_trivial_radix(0, NUM_BLOCK))
-        .collect();
-    let g2_g3_xor = binding.as_mut_slice();
-    let g2_idx = vec![0, 1, 2, 3];
-    let g3_idx = vec![1, 2, 3, 0];
-    parallel_xor(g2_g3_xor, &g2_state, &g3_state, &g2_idx, &g3_idx, sk);
+        let out = mix_cols(&col_clone, pos_vals, sk);
 
-    let mut binding: Vec<BaseRadixCiphertext<Ciphertext>> = (0..16)
-        .map(|_| sk.create_trivial_radix(0, NUM_BLOCK))
-        .collect();
-    let s1_s2_xor = binding.as_mut_slice();
-    let s1_idx = vec![2, 0, 0, 1];
-    let s2_idx = vec![3, 3, 1, 2];
-    parallel_xor(s1_s2_xor, state, state, &s1_idx, &s2_idx, sk);
-
-    state
-        .par_iter_mut()
-        .enumerate()
-        .for_each(|(i, state_elem)| {
-            *state_elem = sk.unchecked_bitxor(&g2_g3_xor[i], &s1_s2_xor[i]);
-        });
+        col[0] = out[0].clone();
+        col[1] = out[1].clone();
+        col[2] = out[2].clone();
+        col[3] = out[3].clone();
+    });
 
     println!("m_col time              {:.2?}", start.elapsed());
 }
@@ -275,10 +262,6 @@ pub fn encrypt_block_fhe(
     let mut state_ck = enc_rdx_vec(&state, &ck);
     let xk_ck = enc_rdx_vec(xk, &ck);
 
-    println!("generate_match_value_tables");
-    let gmul2_tbl = gen_tbl(&GMUL2);
-    let gmul3_tbl = gen_tbl(&GMUL3);
-
     let tot = Instant::now();
     for i in 1..=iter {
         println!("Encrypting iteration: {}", i);
@@ -296,7 +279,7 @@ pub fn encrypt_block_fhe(
             shift_rows_fhe(&mut state_ck);
             print_hex_rdx_fhe("s_row", round, &state_ck, &ck);
 
-            mix_columns_fhe(&mut state_ck, &gmul2_tbl, &gmul3_tbl, &sk);
+            mix_columns_fhe(&mut state_ck, &pos_vals, &sk);
             print_hex_rdx_fhe("m_col", round, &state_ck, &ck);
 
             add_round_key_fhe(&mut state_ck, &xk_ck[round * KEYSIZE..ROUNDKEYSIZE], &sk);
