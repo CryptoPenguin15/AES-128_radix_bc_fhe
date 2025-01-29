@@ -1,7 +1,7 @@
 # Design
 
 - **Readable:** Close to the FIPS-197 documentation.
-- **Encrypt/decrypt:** Both operations supported. Each block outsourced to the server/cloud.
+- **Encrypt/decrypt:** Both operations supported. Each block outsourced to the cloud, with a fresh key pair.
 - **Thread-safe:** Only static global variables
 - **Efficient Implementation:**
   - Minimize bootstraps, as they dominate runtime.
@@ -10,7 +10,6 @@
 - **xor:** Performed unchecked() since bitlength is known.
 - **Key Expansion:** 
   - Performed as an offline phase.
-  - Additional tables for combined operations can be precomputed.
 - **Parallelism:**
   - Support for 16 threads throughput, one per state.
 - **Mode of Operation:**
