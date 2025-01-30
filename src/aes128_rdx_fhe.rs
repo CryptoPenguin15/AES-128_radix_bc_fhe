@@ -5,7 +5,7 @@ use crate::aes128_keyschedule::{BLOCKSIZE, KEYSIZE, ROUNDKEYSIZE, ROUNDS};
 use crate::aes128_tables::{GMUL9, GMULB, GMULD, GMULE, gen_tbl};
 
 use tfhe::MatchValues;
-use tfhe::integer::ServerKey;
+use tfhe::integer::{RadixClientKey, ServerKey};
 
 use tfhe::integer::ciphertext::BaseRadixCiphertext;
 use tfhe::shortint::Ciphertext;
@@ -244,6 +244,56 @@ fn inv_mix_columns_fhe(
         });
 
     println!("inv_mix_columns_fhe time {:.2?}", start.elapsed());
+}
+
+pub fn encrypt_one_block_fhe(
+    input: &[u8; KEYSIZE],
+    xk: &[u8; ROUNDKEYSIZE],
+    output: &mut [u8; BLOCKSIZE],
+    sk: &ServerKey,
+    ck: &RadixClientKey,
+) {
+    let mut state = [0u8; BLOCKSIZE];
+    state.copy_from_slice(input);
+
+    let pos_vals = PosVals::new(ck);
+
+    let mut state_ck = enc_rdx_vec(&state, ck);
+    let xk_ck = enc_rdx_vec(xk, ck);
+
+    let start = Instant::now();
+
+    print_hex_rdx_fhe("input", 0, &state_ck, ck);
+    add_round_key_fhe(&mut state_ck, &xk_ck[..2 * BLOCKSIZE], sk);
+    print_hex_rdx_fhe("k_sch", 0, &state_ck, ck);
+
+    for round in 1..ROUNDS {
+        sub_bytes_fhe(&mut state_ck, &pos_vals, sk);
+        print_hex_rdx_fhe("s_box", round, &state_ck, ck);
+
+        shift_rows_fhe(&mut state_ck);
+        print_hex_rdx_fhe("s_row", round, &state_ck, ck);
+
+        mix_columns_fhe(&mut state_ck, &pos_vals, sk);
+        print_hex_rdx_fhe("m_col", round, &state_ck, ck);
+
+        add_round_key_fhe(&mut state_ck, &xk_ck[round * KEYSIZE..ROUNDKEYSIZE], sk);
+        print_hex_rdx_fhe("k_sch", round, &state_ck, ck);
+    }
+
+    sub_bytes_fhe(&mut state_ck, &pos_vals, sk);
+    print_hex_rdx_fhe("s_box", 10, &state_ck, ck);
+
+    shift_rows_fhe(&mut state_ck);
+    print_hex_rdx_fhe("s_row", 10, &state_ck, ck);
+
+    add_round_key_fhe(&mut state_ck, &xk_ck[KEYSIZE * ROUNDS..ROUNDKEYSIZE], sk);
+    print_hex_rdx_fhe("k_sch", 10, &state_ck, ck);
+
+    println!("encrypt_block_fhe         {:.2?}", start.elapsed());
+
+    let output_vec = dec_rdx_vec(&state_ck, ck);
+    output.copy_from_slice(&output_vec);
 }
 
 pub fn encrypt_block_fhe(

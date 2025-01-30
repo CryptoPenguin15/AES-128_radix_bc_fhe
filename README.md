@@ -1,8 +1,9 @@
 # Design
 
 - **Readable:** Close to the FIPS-197 documentation.
-- **Encrypt/decrypt:** Both operations supported. Each block outsourced to the cloud, with a fresh key pair.
-- **Thread-safe:** Only static global variables
+- **Encrypt/decrypt:** 
+  - Default CTR encrypt mode.
+  - OFB mode with both operations also supported. Each block is outsourced to the cloud, with a fresh key pair.
 - **Efficient Implementation:**
   - Minimize bootstraps, as they dominate runtime.
   - Use BooleanBlock for the `S-Box` and `MixColumns`, with boolean circuit evaluation. 
@@ -59,7 +60,7 @@ Options:
   -n, --number-of-outputs <number_of_outputs>
           Sets the number of blocks [default: 1]
   -i, --initialization-vector <iv>
-          Initialization vector [default: 00112233445566778899aabbccddeeff]
+          Initialization vector [default: 0123456789abcdef]
   -k, --key <key>
           Key value [default: 000102030405060708090a0b0c0d0e0f]
   -h, --help
@@ -69,7 +70,7 @@ Options:
 ```
 
 ```bash
-cargo run --release -- -n 1 -i "00112233445566778899aabbccddeeff" -k "0123456789abcdef0123456789abcdef"
+cargo run --release -- -n 1 -i "0123456789abcdef" -k "0123456789abcdef0123456789abcdef"
 ```
 
 ### Test suite
