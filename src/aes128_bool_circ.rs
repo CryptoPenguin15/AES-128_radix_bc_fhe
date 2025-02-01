@@ -170,9 +170,7 @@ fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
                         break;
                     }
 
-                    print!("\rat step {b} out of {vlen} ");
                     let st = instr_clone.get(b as usize).unwrap();
-
                     let tokens = st.split(' ').collect::<Vec<_>>();
 
                     let op = tokens[3];
@@ -572,7 +570,6 @@ fn mix_cols_bc(col: &ColBoolBlocks, sk: &ServerKey) -> ColBoolBlocks {
                     if b >= vlen.try_into().unwrap() {
                         break;
                     }
-                    print!("\rat step {b} out of {vlen} ");
                     let st = instr_clone.get(b as usize).unwrap();
                     let tokens = st.split(' ').collect::<Vec<_>>();
 
