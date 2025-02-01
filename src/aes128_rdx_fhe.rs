@@ -184,7 +184,7 @@ fn mix_columns_fhe(
     let start = Instant::now();
     assert!(state.len() == 16);
 
-    state.chunks_exact_mut(4).for_each(|col| {
+    state.par_chunks_exact_mut(4).for_each(|col| {
         let col_clone = [
             col[0].clone(),
             col[1].clone(),
