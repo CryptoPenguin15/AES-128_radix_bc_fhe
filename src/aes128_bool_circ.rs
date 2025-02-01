@@ -4,6 +4,13 @@ use tfhe::integer::ciphertext::BaseRadixCiphertext;
 use tfhe::integer::prelude::ServerKeyDefaultCMux;
 use tfhe::integer::{BooleanBlock, RadixClientKey, ServerKey};
 
+use std::collections::HashMap;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering::Relaxed;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
+
 const PS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 
 pub struct PosVals {
@@ -136,6 +143,115 @@ pub fn sbox_inv_idx(
     get_u8_from_bool(res_p, pos_vals, sk)
 }
 
+fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
+    let map = HashMap::<String, BooleanBlock>::new();
+    let var = Arc::new(Mutex::new(map));
+
+    // reverse order
+    for i in 0..=7 {
+        var.lock()
+            .unwrap()
+            .insert(format!("x{}", i), inp[7 - i].clone());
+    }
+
+    let vlen = SBOX_INSTR.len();
+    let idx = &AtomicI32::new(0);
+
+    thread::scope(|s| {
+        for _ in 0..std::cmp::min(8, num_cpus::get()) {
+            let sk_clone = sk.clone();
+            let instr_clone = SBOX_INSTR;
+            let var_clone = var.clone();
+
+            s.spawn(move || {
+                loop {
+                    let b = idx.fetch_add(1, Relaxed);
+                    if b >= vlen.try_into().unwrap() {
+                        break;
+                    }
+
+                    print!("\rat step {b} out of {vlen} ");
+                    let st = instr_clone.get(b as usize).unwrap();
+
+                    let tokens = st.split(' ').collect::<Vec<_>>();
+
+                    let op = tokens[3];
+                    let name = tokens[0];
+
+                    let value = match op {
+                        "^" => {
+                            loop {
+                                let var2 = var_clone.lock().unwrap();
+                                if !(var2.contains_key(tokens[2]) && var2.contains_key(tokens[4])) {
+                                    drop(var2);
+                                    thread::sleep(Duration::from_micros(100));
+                                } else {
+                                    break;
+                                }
+                            }
+                            let var2 = var_clone.lock().unwrap();
+                            let t0 = &var2[tokens[2]].clone();
+                            let t1 = &var2[tokens[4]].clone();
+                            drop(var2);
+                            sk_clone.boolean_bitxor(t0, t1)
+                        }
+                        "&" => {
+                            loop {
+                                let var2 = var_clone.lock().unwrap();
+                                if !(var2.contains_key(tokens[2]) && var2.contains_key(tokens[4])) {
+                                    drop(var2);
+                                    thread::sleep(Duration::from_micros(100));
+                                } else {
+                                    break;
+                                }
+                            }
+                            let var2 = var_clone.lock().unwrap();
+                            let t0 = &var2[tokens[2]].clone();
+                            let t1 = &var2[tokens[4]].clone();
+                            drop(var2);
+                            sk_clone.boolean_bitand(t0, t1)
+                        }
+                        "!" => {
+                            loop {
+                                let var2 = var_clone.lock().unwrap();
+                                if !(var2.contains_key(tokens[2])) {
+                                    drop(var2);
+                                    thread::sleep(Duration::from_micros(100));
+                                } else {
+                                    break;
+                                }
+                            }
+                            let var2 = var_clone.lock().unwrap();
+                            let t0 = &var2[tokens[2]].clone();
+                            drop(var2);
+                            sk_clone.boolean_bitnot(t0)
+                        }
+                        &_ => todo!(),
+                    };
+                    let mut var2 = var_clone.lock().unwrap();
+                    var2.insert(name.to_string(), value);
+                }
+            });
+        }
+    });
+
+    // reverse order
+    let out: [BooleanBlock; 8] = (0..8)
+        .map(|i| {
+            var.lock()
+                .unwrap()
+                .get(&format!("s{}", 7 - i))
+                .cloned()
+                .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    out.clone()
+}
+
+/*
 fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
     // reverse order
     let x0 = &inp[7];
@@ -272,6 +388,7 @@ fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
 
     out.clone()
 }
+*/
 
 fn sbox_inv_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
     // reverse order
@@ -413,175 +530,344 @@ fn sbox_inv_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
 }
 
 fn mix_cols_bc(col: &ColBoolBlocks, sk: &ServerKey) -> ColBoolBlocks {
-    let x0 = &col.r1[0];
-    let x1 = &col.r1[1];
-    let x2 = &col.r1[2];
-    let x3 = &col.r1[3];
-    let x4 = &col.r1[4];
-    let x5 = &col.r1[5];
-    let x6 = &col.r1[6];
-    let x7 = &col.r1[7];
+    let map = HashMap::<String, BooleanBlock>::new();
+    let var = Arc::new(Mutex::new(map));
 
-    let x8 = &col.r2[0];
-    let x9 = &col.r2[1];
-    let x10 = &col.r2[2];
-    let x11 = &col.r2[3];
-    let x12 = &col.r2[4];
-    let x13 = &col.r2[5];
-    let x14 = &col.r2[6];
-    let x15 = &col.r2[7];
+    for i in 0..=7 {
+        var.lock()
+            .unwrap()
+            .insert(format!("x{}", i), col.r1[i].clone());
+    }
 
-    let x16 = &col.r3[0];
-    let x17 = &col.r3[1];
-    let x18 = &col.r3[2];
-    let x19 = &col.r3[3];
-    let x20 = &col.r3[4];
-    let x21 = &col.r3[5];
-    let x22 = &col.r3[6];
-    let x23 = &col.r3[7];
+    for i in 0..=7 {
+        var.lock()
+            .unwrap()
+            .insert(format!("x{}", i + 8), col.r2[i].clone());
+    }
 
-    let x24 = &col.r4[0];
-    let x25 = &col.r4[1];
-    let x26 = &col.r4[2];
-    let x27 = &col.r4[3];
-    let x28 = &col.r4[4];
-    let x29 = &col.r4[5];
-    let x30 = &col.r4[6];
-    let x31 = &col.r4[7];
+    for i in 0..=7 {
+        var.lock()
+            .unwrap()
+            .insert(format!("x{}", i + 16), col.r3[i].clone());
+    }
 
-    let t0 = sk.boolean_bitxor(x0, x8);
-    let t1 = sk.boolean_bitxor(x16, x24);
-    let t2 = sk.boolean_bitxor(x1, x9);
-    let t3 = sk.boolean_bitxor(x17, x25);
-    let t4 = sk.boolean_bitxor(x2, x10);
-    let t5 = sk.boolean_bitxor(x18, x26);
-    let t6 = sk.boolean_bitxor(x3, x11);
-    let t7 = sk.boolean_bitxor(x19, x27);
-    let t8 = sk.boolean_bitxor(x4, x12);
-    let t9 = sk.boolean_bitxor(x20, x28);
-    let t10 = sk.boolean_bitxor(x5, x13);
-    let t11 = sk.boolean_bitxor(x21, x29);
-    let t12 = sk.boolean_bitxor(x6, x14);
-    let t13 = sk.boolean_bitxor(x22, x30);
-    let t14 = sk.boolean_bitxor(x23, x31);
-    let t15 = sk.boolean_bitxor(x7, x15);
-    let t16 = sk.boolean_bitxor(x8, &t1);
-    let y0 = sk.boolean_bitxor(&t15, &t16);
-    let t17 = sk.boolean_bitxor(x7, x23);
-    let t18 = sk.boolean_bitxor(x24, &t0);
-    let y16 = sk.boolean_bitxor(&t14, &t18);
-    let t19 = sk.boolean_bitxor(&t1, &y16);
-    let y24 = sk.boolean_bitxor(&t17, &t19);
-    let t20 = sk.boolean_bitxor(x27, &t14);
-    let t21 = sk.boolean_bitxor(&t0, &y0);
-    let y8 = sk.boolean_bitxor(&t17, &t21);
-    let t22 = sk.boolean_bitxor(&t5, &t20);
-    let y19 = sk.boolean_bitxor(&t6, &t22);
-    let t23 = sk.boolean_bitxor(x11, &t15);
-    let t24 = sk.boolean_bitxor(&t7, &t23);
-    let y3 = sk.boolean_bitxor(&t4, &t24);
-    let t25 = sk.boolean_bitxor(x2, x18);
-    let t26 = sk.boolean_bitxor(&t17, &t25);
-    let t27 = sk.boolean_bitxor(&t9, &t23);
-    let t28 = sk.boolean_bitxor(&t8, &t20);
-    let t29 = sk.boolean_bitxor(x10, &t2);
-    let y2 = sk.boolean_bitxor(&t5, &t29);
-    let t30 = sk.boolean_bitxor(x26, &t3);
-    let y18 = sk.boolean_bitxor(&t4, &t30);
-    let t31 = sk.boolean_bitxor(x9, x25);
-    let t32 = sk.boolean_bitxor(&t25, &t31);
-    let y10 = sk.boolean_bitxor(&t30, &t32);
-    let y26 = sk.boolean_bitxor(&t29, &t32);
-    let t33 = sk.boolean_bitxor(x1, &t18);
-    let t34 = sk.boolean_bitxor(x30, &t11);
-    let y22 = sk.boolean_bitxor(&t12, &t34);
-    let t35 = sk.boolean_bitxor(x14, &t13);
-    let y6 = sk.boolean_bitxor(&t10, &t35);
-    let t36 = sk.boolean_bitxor(x5, x21);
-    let t37 = sk.boolean_bitxor(x30, &t17);
-    let t38 = sk.boolean_bitxor(x17, &t16);
-    let t39 = sk.boolean_bitxor(x13, &t8);
-    let y5 = sk.boolean_bitxor(&t11, &t39);
-    let t40 = sk.boolean_bitxor(x12, &t36);
-    let t41 = sk.boolean_bitxor(x29, &t9);
-    let y21 = sk.boolean_bitxor(&t10, &t41);
-    let t42 = sk.boolean_bitxor(x28, &t40);
-    let y13 = sk.boolean_bitxor(&t41, &t42);
-    let y29 = sk.boolean_bitxor(&t39, &t42);
-    let t43 = sk.boolean_bitxor(x15, &t12);
-    let y7 = sk.boolean_bitxor(&t14, &t43);
-    let t44 = sk.boolean_bitxor(x14, &t37);
-    let y31 = sk.boolean_bitxor(&t43, &t44);
-    let t45 = sk.boolean_bitxor(x31, &t13);
-    let y15 = sk.boolean_bitxor(&t44, &t45);
-    let y23 = sk.boolean_bitxor(&t15, &t45);
-    let t46 = sk.boolean_bitxor(&t12, &t36);
-    let y14 = sk.boolean_bitxor(&y6, &t46);
-    let t47 = sk.boolean_bitxor(&t31, &t33);
-    let y17 = sk.boolean_bitxor(&t19, &t47);
-    let t48 = sk.boolean_bitxor(&t6, &y3);
-    let y11 = sk.boolean_bitxor(&t26, &t48);
-    let t49 = sk.boolean_bitxor(&t2, &t38);
-    let y25 = sk.boolean_bitxor(&y24, &t49);
-    let t50 = sk.boolean_bitxor(&t7, &y19);
-    let y27 = sk.boolean_bitxor(&t26, &t50);
-    let t51 = sk.boolean_bitxor(x22, &t46);
-    let y30 = sk.boolean_bitxor(&t11, &t51);
-    let t52 = sk.boolean_bitxor(x19, &t28);
-    let y20 = sk.boolean_bitxor(x28, &t52);
-    let t53 = sk.boolean_bitxor(x3, &t27);
-    let y4 = sk.boolean_bitxor(x12, &t53);
-    let t54 = sk.boolean_bitxor(&t3, &t33);
-    let y9 = sk.boolean_bitxor(&y8, &t54);
-    let t55 = sk.boolean_bitxor(&t21, &t31);
-    let y1 = sk.boolean_bitxor(&t38, &t55);
-    let t56 = sk.boolean_bitxor(x4, &t17);
-    let t57 = sk.boolean_bitxor(x19, &t56);
-    let y12 = sk.boolean_bitxor(&t27, &t57);
-    let t58 = sk.boolean_bitxor(x3, &t28);
-    let t59 = sk.boolean_bitxor(&t17, &t58);
-    let y28 = sk.boolean_bitxor(x20, &t59);
+    for i in 0..=7 {
+        var.lock()
+            .unwrap()
+            .insert(format!("x{}", i + 24), col.r4[i].clone());
+    }
 
-    let r1 = [
-        y0.clone(),
-        y1.clone(),
-        y2.clone(),
-        y3.clone(),
-        y4.clone(),
-        y5.clone(),
-        y6.clone(),
-        y7.clone(),
-    ];
-    let r2 = [
-        y8.clone(),
-        y9.clone(),
-        y10.clone(),
-        y11.clone(),
-        y12.clone(),
-        y13.clone(),
-        y14.clone(),
-        y15.clone(),
-    ];
-    let r3 = [
-        y16.clone(),
-        y17.clone(),
-        y18.clone(),
-        y19.clone(),
-        y20.clone(),
-        y21.clone(),
-        y22.clone(),
-        y23.clone(),
-    ];
-    let r4 = [
-        y24.clone(),
-        y25.clone(),
-        y26.clone(),
-        y27.clone(),
-        y28.clone(),
-        y29.clone(),
-        y30.clone(),
-        y31.clone(),
-    ];
+    let vlen = MIX_COLS_INSTR.len();
+    let idx = &AtomicI32::new(0);
+
+    thread::scope(|s| {
+        for _ in 0..std::cmp::min(8, num_cpus::get()) {
+            let sk_clone = sk.clone();
+            let instr_clone = MIX_COLS_INSTR;
+            let var_clone = var.clone();
+
+            s.spawn(move || {
+                loop {
+                    let b = idx.fetch_add(1, Relaxed);
+                    if b >= vlen.try_into().unwrap() {
+                        break;
+                    }
+                    print!("\rat step {b} out of {vlen} ");
+                    let st = instr_clone.get(b as usize).unwrap();
+                    let tokens = st.split(' ').collect::<Vec<_>>();
+
+                    let op = tokens[3];
+                    let name = tokens[0];
+
+                    let value = match op {
+                        "^" => {
+                            loop {
+                                let var2 = var_clone.lock().unwrap();
+                                if !(var2.contains_key(tokens[2]) && var2.contains_key(tokens[4])) {
+                                    drop(var2);
+                                    thread::sleep(Duration::from_micros(100));
+                                } else {
+                                    break;
+                                }
+                            }
+                            let var2 = var_clone.lock().unwrap();
+                            let t0 = &var2[tokens[2]].clone();
+                            let t1 = &var2[tokens[4]].clone();
+                            drop(var2);
+                            sk_clone.boolean_bitxor(t0, t1)
+                        }
+                        &_ => todo!(),
+                    };
+                    let mut var2 = var_clone.lock().unwrap();
+                    var2.insert(name.to_string(), value);
+                }
+            });
+        }
+    });
+
+    let r1: [BooleanBlock; 8] = (0..8)
+        .map(|i| {
+            var.lock()
+                .unwrap()
+                .get(&format!("y{}", i))
+                .cloned()
+                .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let r2: [BooleanBlock; 8] = (0..8)
+        .map(|i| {
+            var.lock()
+                .unwrap()
+                .get(&format!("y{}", i + 8))
+                .cloned()
+                .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let r3: [BooleanBlock; 8] = (0..8)
+        .map(|i| {
+            var.lock()
+                .unwrap()
+                .get(&format!("y{}", i + 16))
+                .cloned()
+                .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    let r4: [BooleanBlock; 8] = (0..8)
+        .map(|i| {
+            var.lock()
+                .unwrap()
+                .get(&format!("y{}", i + 24))
+                .cloned()
+                .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
 
     ColBoolBlocks::new([r1, r2, r3, r4])
 }
+
+// https://eprint.iacr.org/2009/191.pdf
+const SBOX_INSTR: [&str; 119] = [
+    "y14 = x3 ^ x5",
+    "y13 = x0 ^ x6",
+    "y9 = x0 ^ x3",
+    "y8 = x0 ^ x5",
+    "t0 = x1 ^ x2",
+    "y1 = t0 ^ x7",
+    "y4 = y1 ^ x3",
+    "y12 = y13 ^ y14",
+    "y2 = y1 ^ x0",
+    "y5 = y1 ^ x6",
+    "y3 = y5 ^ y8",
+    "t1 = x4 ^ y12",
+    "y15 = t1 ^ x5",
+    "y20 = t1 ^ x1",
+    "y6 = y15 ^ x7",
+    "y10 = y15 ^ t0",
+    "y11 = y20 ^ y9",
+    "y7 = x7 ^ y11",
+    "y17 = y10 ^ y11",
+    "y19 = y10 ^ y8",
+    "y16 = t0 ^ y11",
+    "y21 = y13 ^ y16",
+    "y18 = x0 ^ y16",
+    "t2 = y12 & y15",
+    "t3 = y3 & y6",
+    "t4 = t3 ^ t2",
+    "t5 = y4 & x7",
+    "t6 = t5 ^ t2",
+    "t7 = y13 & y16",
+    "t8 = y5 & y1",
+    "t9 = t8 ^ t7",
+    "t10 = y2 & y7",
+    "t11 = t10 ^ t7",
+    "t12 = y9 & y11",
+    "t13 = y14 & y17",
+    "t14 = t13 ^ t12",
+    "t15 = y8 & y10",
+    "t16 = t15 ^ t12",
+    "t17 = t4 ^ t14",
+    "t18 = t6 ^ t16",
+    "t19 = t9 ^ t14",
+    "t20 = t11 ^ t16",
+    "t21 = t17 ^ y20",
+    "t22 = t18 ^ y19",
+    "t23 = t19 ^ y21",
+    "t24 = t20 ^ y18",
+    "t25 = t21 ^ t22",
+    "t26 = t21 & t23",
+    "t27 = t24 ^ t26",
+    "t28 = t25 & t27",
+    "t29 = t28 ^ t22",
+    "t30 = t23 ^ t24",
+    "t31 = t22 ^ t26",
+    "t32 = t31 & t30",
+    "t33 = t32 ^ t24",
+    "t34 = t23 ^ t33",
+    "t35 = t27 ^ t33",
+    "t36 = t24 & t35",
+    "t37 = t36 ^ t34",
+    "t38 = t27 ^ t36",
+    "t39 = t29 & t38",
+    "t40 = t25 ^ t39",
+    "t41 = t40 ^ t37",
+    "t42 = t29 ^ t33",
+    "t43 = t29 ^ t40",
+    "t44 = t33 ^ t37",
+    "t45 = t42 ^ t41",
+    "z0 = t44 & y15",
+    "z1 = t37 & y6",
+    "z2 = t33 & x7",
+    "z3 = t43 & y16",
+    "z4 = t40 & y1",
+    "z5 = t29 & y7",
+    "z6 = t42 & y11",
+    "z7 = t45 & y17",
+    "z8 = t41 & y10",
+    "z9 = t44 & y12",
+    "z10 = t37 & y3",
+    "z11 = t33 & y4",
+    "z12 = t43 & y13",
+    "z13 = t40 & y5",
+    "z14 = t29 & y2",
+    "z15 = t42 & y9",
+    "z16 = t45 & y14",
+    "z17 = t41 & y8",
+    "t46 = z15 ^ z16",
+    "t47 = z10 ^ z11",
+    "t48 = z5 ^ z13",
+    "t49 = z9 ^ z10",
+    "t50 = z2 ^ z12",
+    "t51 = z2 ^ z5",
+    "t52 = z7 ^ z8",
+    "t53 = z0 ^ z3",
+    "t54 = z6 ^ z7",
+    "t55 = z16 ^ z17",
+    "t56 = z12 ^ t48",
+    "t57 = t50 ^ t53",
+    "t58 = z4 ^ t46",
+    "t59 = z3 ^ t54",
+    "t60 = t46 ^ t57",
+    "t61 = z14 ^ t57",
+    "t62 = t52 ^ t58",
+    "t63 = t49 ^ t58",
+    "t64 = z4 ^ t59",
+    "t65 = t61 ^ t62",
+    "t66 = z1 ^ t63",
+    "t67 = t64 ^ t65",
+    "s77 = t48 ^ t60",
+    "s7 = s77 !",
+    "s66 = t56 ^ t62",
+    "s6 = s66 !",
+    "s5 = t47 ^ t65",
+    "s4 = t51 ^ t66",
+    "s3 = t53 ^ t66",
+    "s22 = t55 ^ t67",
+    "s2 = s22 !",
+    "s11 = t64 ^ s3",
+    "s1 = s11 !",
+    "s0 = t59 ^ t63",
+];
+
+// https://eprint.iacr.org/2019/833.pdf
+const MIX_COLS_INSTR: [&str; 92] = [
+    "t0 = x0 ^ x8",
+    "t1 = x16 ^ x24",
+    "t2 = x1 ^ x9",
+    "t3 = x17 ^ x25",
+    "t4 = x2 ^ x10",
+    "t5 = x18 ^ x26",
+    "t6 = x3 ^ x11",
+    "t7 = x19 ^ x27",
+    "t8 = x4 ^ x12",
+    "t9 = x20 ^ x28",
+    "t10 = x5 ^ x13",
+    "t11 = x21 ^ x29",
+    "t12 = x6 ^ x14",
+    "t13 = x22 ^ x30",
+    "t14 = x23 ^ x31",
+    "t15 = x7 ^ x15",
+    "t16 = x8 ^ t1",
+    "y0 = t15 ^ t16",
+    "t17 = x7 ^ x23",
+    "t18 = x24 ^ t0",
+    "y16 = t14 ^ t18",
+    "t19 = t1 ^ y16",
+    "y24 = t17 ^ t19",
+    "t20 = x27 ^ t14",
+    "t21 = t0 ^ y0",
+    "y8 = t17 ^ t21",
+    "t22 = t5 ^ t20",
+    "y19 = t6 ^ t22",
+    "t23 = x11 ^ t15",
+    "t24 = t7 ^ t23",
+    "y3 = t4 ^ t24",
+    "t25 = x2 ^ x18",
+    "t26 = t17 ^ t25",
+    "t27 = t9 ^ t23",
+    "t28 = t8 ^ t20",
+    "t29 = x10 ^ t2",
+    "y2 = t5 ^ t29",
+    "t30 = x26 ^ t3",
+    "y18 = t4 ^ t30",
+    "t31 = x9 ^ x25",
+    "t32 = t25 ^ t31",
+    "y10 = t30 ^ t32",
+    "y26 = t29 ^ t32",
+    "t33 = x1 ^ t18",
+    "t34 = x30 ^ t11",
+    "y22 = t12 ^ t34",
+    "t35 = x14 ^ t13",
+    "y6 = t10 ^ t35",
+    "t36 = x5 ^ x21",
+    "t37 = x30 ^ t17",
+    "t38 = x17 ^ t16",
+    "t39 = x13 ^ t8",
+    "y5 = t11 ^ t39",
+    "t40 = x12 ^ t36",
+    "t41 = x29 ^ t9",
+    "y21 = t10 ^ t41",
+    "t42 = x28 ^ t40",
+    "y13 = t41 ^ t42",
+    "y29 = t39 ^ t42",
+    "t43 = x15 ^ t12",
+    "y7 = t14 ^ t43",
+    "t44 = x14 ^ t37",
+    "y31 = t43 ^ t44",
+    "t45 = x31 ^ t13",
+    "y15 = t44 ^ t45",
+    "y23 = t15 ^ t45",
+    "t46 = t12 ^ t36",
+    "y14 = y6 ^ t46",
+    "t47 = t31 ^ t33",
+    "y17 = t19 ^ t47",
+    "t48 = t6 ^ y3",
+    "y11 = t26 ^ t48",
+    "t49 = t2 ^ t38",
+    "y25 = y24 ^ t49",
+    "t50 = t7 ^ y19",
+    "y27 = t26 ^ t50",
+    "t51 = x22 ^ t46",
+    "y30 = t11 ^ t51",
+    "t52 = x19 ^ t28",
+    "y20 = x28 ^ t52",
+    "t53 = x3 ^ t27",
+    "y4 = x12 ^ t53",
+    "t54 = t3 ^ t33",
+    "y9 = y8 ^ t54",
+    "t55 = t21 ^ t31",
+    "y1 = t38 ^ t55",
+    "t56 = x4 ^ t17",
+    "t57 = x19 ^ t56",
+    "y12 = t27 ^ t57",
+    "t58 = x3 ^ t28",
+    "t59 = t17 ^ t58",
+    "y28 = x20 ^ t59",
+];
