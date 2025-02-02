@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use rayon::prelude::*;
+
 const PS: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 
 pub struct PosVals {
@@ -62,13 +64,16 @@ fn get_bool_from_u8(
 ) -> [BooleanBlock; 8] {
     let p_b = pos_vals.get_p_b();
 
-    // radix to boolean blocks
-    let x_p: [BooleanBlock; 8] = core::array::from_fn(|i| {
-        let mask = sk.bitand_parallelized(&p_b[i], idx);
-        sk.eq_parallelized(&mask, &p_b[i])
-    });
+    let x_p: Vec<BooleanBlock> = (0..8)
+        .into_par_iter()
+        .map(|i| {
+            let mask = sk.bitand_parallelized(&p_b[i], idx);
+            sk.eq_parallelized(&mask, &p_b[i])
+        })
+        .collect();
 
-    x_p
+    x_p.try_into()
+        .unwrap_or_else(|_| panic!("Failed to convert Vec to array"))
 }
 
 #[inline]
@@ -80,21 +85,13 @@ fn get_u8_from_bool(
     let p_b = pos_vals.get_p_b();
     let v_0 = pos_vals.get_v_0();
 
-    let r_b: [BaseRadixCiphertext<Ciphertext>; 8] =
-        core::array::from_fn(|i| sk.if_then_else_parallelized(&res_p[i], &p_b[i], v_0));
+    let r_b: Vec<BaseRadixCiphertext<Ciphertext>> = (0..8)
+        .into_par_iter()
+        .map(|i| sk.if_then_else_parallelized(&res_p[i], &p_b[i], v_0))
+        .collect();
 
-    let val: BaseRadixCiphertext<Ciphertext> = sk.bitor_parallelized(
-        &sk.bitor_parallelized(
-            &sk.bitor_parallelized(&r_b[0], &r_b[1]),
-            &sk.bitor_parallelized(&r_b[2], &r_b[3]),
-        ),
-        &sk.bitor_parallelized(
-            &sk.bitor_parallelized(&r_b[4], &r_b[5]),
-            &sk.bitor_parallelized(&r_b[6], &r_b[7]),
-        ),
-    );
-
-    val
+    r_b.into_par_iter()
+        .reduce(|| v_0.clone(), |a, b| sk.bitor_parallelized(&a, &b))
 }
 
 #[inline]
@@ -143,6 +140,7 @@ pub fn sbox_inv_idx(
     get_u8_from_bool(res_p, pos_vals, sk)
 }
 
+#[inline]
 fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
     let map = HashMap::<String, BooleanBlock>::new();
     let var = Arc::new(Mutex::new(map));
@@ -250,6 +248,7 @@ fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
 }
 
 /*
+#[inline]
 fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
     // reverse order
     let x0 = &inp[7];
@@ -388,6 +387,7 @@ fn sbox_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
 }
 */
 
+#[inline]
 fn sbox_inv_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
     // reverse order
     let u0 = &inp[7];
@@ -527,6 +527,7 @@ fn sbox_inv_bc(inp: &[BooleanBlock; 8], sk: &ServerKey) -> [BooleanBlock; 8] {
     out.clone()
 }
 
+#[inline]
 fn mix_cols_bc(col: &ColBoolBlocks, sk: &ServerKey) -> ColBoolBlocks {
     let map = HashMap::<String, BooleanBlock>::new();
     let var = Arc::new(Mutex::new(map));
