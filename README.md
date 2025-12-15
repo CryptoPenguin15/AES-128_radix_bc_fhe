@@ -1,9 +1,6 @@
 # Design
 
 - **Readable:** Close to the FIPS-197 documentation.
-- **Encrypt/decrypt:** 
-  - Default CTR encrypt mode.
-  - OFB mode with both operations also supported. Each block is outsourced to the cloud, with a fresh key pair.
 - **Efficient Implementation:**
   - Minimize bootstraps, as they dominate runtime.
   - Use BooleanBlock for the `S-Box` and `MixColumns`, with boolean circuit evaluation. 
@@ -48,31 +45,6 @@ Time taken can be estimated from
 | **mix_cols** | 9 * 5           | 225          |
 | **Total**    | **76**          | **246**       |      
 
-
-## Example Invocation
-### Binary
-```bash
-cargo run --release -- --help
-
-Usage: aes128_rdx_bc_fhe [OPTIONS]
-
-Options:
-  -n, --number-of-outputs <number_of_outputs>
-          Sets the number of blocks [default: 1]
-  -i, --initialization-vector <iv>
-          Initialization vector [default: 0123456789abcdef]
-  -k, --key <key>
-          Key value [default: 000102030405060708090a0b0c0d0e0f]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
-```
-
-```bash
-cargo run --release -- -n 1 -i "0123456789abcdef" -k "0123456789abcdef0123456789abcdef"
-```
-
 ### Test suite
 Running all the tests at once probably overloads the system.
 ```bash
@@ -90,4 +62,3 @@ cargo test --release -- --nocapture ::test_endianess -- --exact
 - [A new combinational logic minimization technique with applications to cryptology.](https://eprint.iacr.org/2009/191.pdf)
 - [Circuit Minimization Work. Yale]
 - [AES MixColumn with 92 XOR gates](https://eprint.iacr.org/2019/833.pdf)
-
