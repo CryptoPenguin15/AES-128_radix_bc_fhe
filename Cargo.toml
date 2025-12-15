@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tfhe = { version = "*", features = ["integer", "x86_64-unix"] }
-#tfhe = { version = "*", features = ["integer", "aarch64-unix"] }
+tfhe = { version = "*", features = ["integer"] }
 aes = "0.8.4"
 rand = "0.8.5"
 num_cpus = "1.16.0"
